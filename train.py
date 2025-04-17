@@ -8,48 +8,53 @@ from torch.utils.data import TensorDataset, DataLoader, Subset
 from torchvision import transforms
 from sklearn.model_selection import StratifiedShuffleSplit
 
-# 1. Load data function
+# Load data function
 def load_data(features_csv, labels_csv, batch_size=64, val_frac=0.2, random_state=42):
-    # Read CSVs: assume each row is a flattened 100x100 image (length 10000)
+    
     X = pd.read_csv(features_csv, header=None).values.astype(np.float32)
     y = pd.read_csv(labels_csv, header=None).values.squeeze().astype(np.int64)
 
-    # Reshape to (N, 100, 100)
+    # reshape to (N, 100, 100), to make sure the images correctly formated
     X = X.reshape(-1, 100, 100)
-    # Normalize pixel values to [0,1]
-    X /= 255.0
+    # normalize 
+    # IMP: CHECK WHETHER THE IMAGE IS ALREADY NORMALIZED    
+    # X /= 255.0
 
-    # Convert to tensor and add channel dimension: (N, 1, 100, 100)
+    # convert to tensor and add channel dimension: (N, 1, 100, 100)
     X_tensor = torch.from_numpy(X).unsqueeze(1)
     y_tensor = torch.from_numpy(y)
 
-    # Create dataset
+    # create dataset
     dataset = TensorDataset(X_tensor, y_tensor)
 
-    # Stratified split
+    # get quick split to get validation and train set
     sss = StratifiedShuffleSplit(n_splits=1, test_size=val_frac, random_state=random_state)
     train_idx, val_idx = next(sss.split(X, y))
 
     train_ds = Subset(dataset, train_idx)
     val_ds   = Subset(dataset, val_idx)
 
-    # DataLoaders
+    # dataLoaders
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
     val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False)
 
     return train_loader, val_loader
 
-# 2. Data augmentation transforms (for on-the-fly augmenting within a custom Dataset)
+# IMP: data augmentation, not sure if we need this
 def get_augmented_transforms():
     return transforms.Compose([
         transforms.ToPILImage(),             # expects CxHxW or HxW
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(degrees=15),
         transforms.RandomResizedCrop(size=100, scale=(0.8, 1.0)),
-        transforms.ToTensor(),               # yields 1x100x100 for grayscale
+        transforms.ToTensor(),               # gets 1x100x100 for 1 channel
     ])
 
-# 3. CNN model for single-channel 100x100 input, 10 classes
+# Rough CNN Model
+# IMP: This definitely needs to be changed, its just something I randomly
+# put together
+# Question is how do we use hyperparameter training here?
+# IMP: we need glorot and xe initializition here
 class ImageCNN(nn.Module):
     def __init__(self, num_classes=10, conv_filters=[32, 64, 128],
                  kernel_sizes=[3,3,3], dropout_rate=0.5):
@@ -67,13 +72,12 @@ class ImageCNN(nn.Module):
             in_ch = out_ch
         self.conv = nn.Sequential(*layers)
 
-        # Compute flattened feature size dynamically
         with torch.no_grad():
             sample = torch.zeros(1,1,100,100)
             feat = self.conv(sample)
         flat_dim = feat.view(1, -1).size(1)
 
-        # Fully connected head
+        # linear layers to predict
         self.fc1 = nn.Linear(flat_dim, 256)
         self.bn1 = nn.BatchNorm1d(256)
         self.dropout = nn.Dropout(dropout_rate)
@@ -101,7 +105,7 @@ class ImageCNN(nn.Module):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
 
-# 4. Training loop function (returns history for plotting)
+# training loop that tracks valid/train loss for plot, uses adam
 def train_model(model, train_loader, val_loader, epochs=10, lr=1e-3, device=None):
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
@@ -114,7 +118,7 @@ def train_model(model, train_loader, val_loader, epochs=10, lr=1e-3, device=None
     }
 
     for epoch in range(1, epochs+1):
-        # Training phase
+        # training
         model.train()
         train_loss, correct, total = 0.0, 0, 0
         for X_batch, y_batch in train_loader:
@@ -131,7 +135,7 @@ def train_model(model, train_loader, val_loader, epochs=10, lr=1e-3, device=None
         avg_train_loss = train_loss / total
         train_acc = correct / total * 100
 
-        # Validation phase
+        # valid
         model.eval()
         val_loss, val_correct, val_total = 0.0, 0, 0
         with torch.no_grad():
@@ -146,7 +150,7 @@ def train_model(model, train_loader, val_loader, epochs=10, lr=1e-3, device=None
         avg_val_loss = val_loss / val_total
         val_acc = val_correct / val_total * 100
 
-        # Record history
+        # plotting
         history['train_loss'].append(avg_train_loss)
         history['val_loss'].append(avg_val_loss)
         history['train_acc'].append(train_acc)
@@ -158,22 +162,19 @@ def train_model(model, train_loader, val_loader, epochs=10, lr=1e-3, device=None
 
     return history
 
-# 5. Example usage
+
 def main():
-    # Paths to your CSVs
+    # data
     feats_csv = 'x_train_project.csv'
     labels_csv = 't_train_project.csv'
 
-    # Load data
     train_loader, val_loader = load_data(feats_csv, labels_csv)
 
-    # Instantiate model
     model = ImageCNN()
 
-    # Train and capture history
     history = train_model(model, train_loader, val_loader, epochs=10, lr=1e-3)
 
-    # Plotting final accuracy and loss
+    # plot
     import matplotlib.pyplot as plt
     epochs = range(1, len(history['train_loss']) + 1)
     plt.figure()
