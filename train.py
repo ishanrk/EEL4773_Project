@@ -50,6 +50,8 @@ def get_augmented_transforms():
         transforms.ToTensor(),               # gets 1x100x100 for 1 channel
     ])
 
+
+
 # Rough CNN Model
 # IMP: This definitely needs to be changed, its just something I randomly
 # put together
@@ -63,7 +65,7 @@ class ImageCNN(nn.Module):
         in_ch = 1  # single-channel input
         for out_ch, k in zip(conv_filters, kernel_sizes):
             layers += [
-                nn.Conv2d(in_ch, out_ch, kernel_size=k, padding=k//2),
+                nn.Conv2d(in_ch, out_ch, kernel_size=k, padding='same'),
                 nn.BatchNorm2d(out_ch),
                 nn.ReLU(inplace=True),
                 nn.MaxPool2d(2),
@@ -104,6 +106,7 @@ class ImageCNN(nn.Module):
             elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
                 nn.init.ones_(m.weight)
                 nn.init.zeros_(m.bias)
+
 
 # training loop that tracks valid/train loss for plot, uses adam
 def train_model(model, train_loader, val_loader, epochs=10, lr=1e-3, device=None):
@@ -163,37 +166,57 @@ def train_model(model, train_loader, val_loader, epochs=10, lr=1e-3, device=None
     return history
 
 
+
 def main():
     # data
-    feats_csv = 'x_train_project.csv'
+    feats_csv = 'x_train_project.csv'   
     labels_csv = 't_train_project.csv'
 
     train_loader, val_loader = load_data(feats_csv, labels_csv)
 
     model = ImageCNN()
 
-    history = train_model(model, train_loader, val_loader, epochs=10, lr=1e-3)
+    learning_rates = [1e-4, 1e-3, 1e-2]  # List of learning rates to test
+    history_all_lrs = {}  # Dictionary to store results for each learning rate
 
-    # plot
-    import matplotlib.pyplot as plt
-    epochs = range(1, len(history['train_loss']) + 1)
-    plt.figure()
-    plt.plot(epochs, history['train_loss'], label='Train Loss')
-    plt.plot(epochs, history['val_loss'], label='Val Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.title('Loss over Epochs')
-    plt.show()
+    # Loop through each learning rate
+    for lr in learning_rates:
+        print(f"Training with learning rate: {lr}")
+        model = ImageCNN()  # Re-initialize the model each time
 
-    plt.figure()
-    plt.plot(epochs, history['train_acc'], label='Train Acc')
-    plt.plot(epochs, history['val_acc'], label='Val Acc')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy (%)')
-    plt.legend()
-    plt.title('Accuracy over Epochs')
-    plt.show()
+        # Train the model with the current learning rate
+        history = train_model(model, train_loader, val_loader, epochs=10, lr=lr)
+
+        # Store the results for this learning rate
+        history_all_lrs[lr] = history
+
+        # Optionally, you can plot the results for each learning rate here:
+        import matplotlib.pyplot as plt
+        epochs_range = range(1, len(history['train_loss']) + 1)
+        
+        plt.figure()
+        plt.plot(epochs_range, history['train_loss'], label=f'Train Loss (LR={lr})')
+        plt.plot(epochs_range, history['val_loss'], label=f'Val Loss (LR={lr})')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.title(f'Loss over Epochs (LR={lr})')
+        plt.show()
+
+        plt.figure()
+        plt.plot(epochs_range, history['train_acc'], label=f'Train Acc (LR={lr})')
+        plt.plot(epochs_range, history['val_acc'], label=f'Val Acc (LR={lr})')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy (%)')
+        plt.legend()
+        plt.title(f'Accuracy over Epochs (LR={lr})')
+        plt.show()
+
+    # After training all learning rates, you can analyze or compare their performance:
+    for lr, hist in history_all_lrs.items():
+        print(f"Results for learning rate {lr}:")
+        print(f"Final Train Accuracy: {hist['train_acc'][-1]:.2f}%")
+        print(f"Final Validation Accuracy: {hist['val_acc'][-1]:.2f}%")
 
 if __name__ == '__main__':
     print(f"NumPy version: {np.__version__}")
