@@ -27,15 +27,19 @@ def evaluate_model(clf, X_test, y_test):
 
 def train_svm_classifier(X_train,y_train, X_test, y_test):
 
+    pca = PCA(n_components=500)
+    X_train_reduced = pca.fit_transform(X_train)
+    X_test_reduced  = pca.transform(X_test)
+
+
     clf = SVC(kernel='rbf', C=1.0, gamma='scale')
-    clf.fit(X_train, y_train)
+    clf.fit(X_train_reduced, y_train)
 
-    return evaluate_model(clf, X_test, y_test)
-
+    return evaluate_model(clf, X_test_reduced, y_test)
 
 def train_knn_with_pca(X_train, y_train, X_test, y_test):
 
-    pca = PCA(n_components=120)
+    pca = PCA(n_components=500)
     X_train_reduced = pca.fit_transform(X_train)
     X_test_reduced  = pca.transform(X_test)
 
@@ -46,7 +50,7 @@ def train_knn_with_pca(X_train, y_train, X_test, y_test):
 
 def train_large_mlp_classifier(X_train,y_train, X_test, y_test):
 
-    clf = MLPClassifier(hidden_layer_sizes=(512, 256, 128, 64), activation='relu',
+    clf = MLPClassifier(hidden_layer_sizes=(1024,512, 256, 128, 64), activation='relu',
                         solver='adam', max_iter=300, random_state=42)
     clf.fit(X_train, y_train)
 
