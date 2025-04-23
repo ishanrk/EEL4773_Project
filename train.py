@@ -14,6 +14,7 @@ from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, recall_score, precision_score
 from sklearn.decomposition import PCA
 from sklearn.neighbors import KNeighborsClassifier
+from itertools import product
 
 
 # other models
@@ -298,7 +299,7 @@ def train_hyperparameter(model, x_train_csv, y_train_csv , epochs=25, lr=1e-3, d
     model.to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
-    scheduler = StepLR(optimizer, step_size=5, gamma=0.5)  # lr ← lr * 0.1 every 10 epochs
+    scheduler = StepLR(optimizer, step_size=5, gamma=0.5)  # lr ← lr * 0.5 every 5 epochs
 
     history = {
         'train_loss': [], 'val_loss': [],
@@ -410,13 +411,75 @@ def main():
     '''
 
     # IF TRAINING FOR HYPERPARAMETER TUNING
-    '''
+    
     # Set your relevant hyperparaneters in ImageCNN()
-    model = ImageCNN() 
-    history = train_hyperameter(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
-    '''
+
+    # 1) define the hyperparameter grid
+    param_grid = {
+        "n_conv":       [2, 3, 4],
+        "dropout":      [0.3, 0.5, 0.7],
+        "kernel":       [3, 5, 7],
+        "out_ch":       [16, 32, 64 ,128],
+    }
+
+    # 2) build all combos
+    keys, values = zip(*param_grid.items())
+    combos = [dict(zip(keys, vals)) for vals in product(*values)]
+    counter = 0
+
+    # 3) iterate over all combos and train
+    results = []
+    for cfg in combos:
+        # build conv_layers spec
+        conv_layers = [
+            {"out_ch": cfg["out_ch"], 
+            "kernel_size": cfg["kernel"], 
+            "dropout_rate": cfg["dropout"]}
+            for _ in range(cfg["n_conv"])
+        ]
+
+        print(f"Training with config: {conv_layers}")
+        # build model
+        model = ImageCNN(conv_layers=conv_layers, mlp_layers={"out_ch":256, "dropout_rate":0.5})
+        # train model
+        hist = train_hyperparameter(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+        # save results
+        results.append({
+            'n_conv': cfg['n_conv'],
+            'dropout': cfg['dropout'],
+            'kernel': cfg['kernel'],
+            'out_ch': cfg['out_ch'],
+            'train_loss': hist['train_loss'],
+            'val_loss':   hist['val_loss'],
+            'train_acc':  hist['train_acc'],
+            'val_acc':    hist['val_acc'],
+        })
+        counter += 1
+    print(f"Total combinations: {counter}")
+
+    # convert results to DataFrame
+    df = pd.DataFrame(results)
+    # sort by final validation accuracy
+    df['final_val_acc'] = df['val_acc'].apply(lambda x: x[-1])
+    df_sorted = df.sort_values('final_val_acc', ascending=False).reset_index(drop=True)
+
+    print("Top 5 configs by validation accuracy:")
+    print(df_sorted.head(5)[['n_conv','dropout','kernel','out_ch','final_val_acc']])
+
+    print("Worst 5 configs by validation accuracy:")
+    print(df_sorted.tail(5)[['n_conv','dropout','kernel','out_ch','final_val_acc']])
+
+    # save full results
+    out_path = 'hyperparam_results.csv'
+    df_sorted.to_csv(out_path, index=False)
+    print(f"Saved all results to {out_path}")
+
+    # model = ImageCNN() 
+    # history = train_hyperparameter(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    
 
     # IF TRAINING TO EXEPRIMENT AGAINST A TEST SET
+    '''
     model = ImageCNN() 
     history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=0, lr=1e-2)
     test_correct = 0
@@ -433,6 +496,7 @@ def main():
 
 
     print("Testing Accuracy: ", test_acc)
+    '''
     # When testing against other models just use the test_loader and other data recieved from the above code
     '''
     acc, f1, prec = train_large_mlp_classifier(X_train, y_train, X_test, y_test)
