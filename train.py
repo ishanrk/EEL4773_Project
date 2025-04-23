@@ -10,9 +10,11 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from torch.optim.lr_scheduler import StepLR    # learning rate scheduler
 import matplotlib.pyplot as plt
 from sklearn.svm import SVC
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.neural_network import MLPClassifier
 from sklearn.metrics import accuracy_score, recall_score, precision_score
+from sklearn.decomposition import PCA
+from sklearn.neighbors import KNeighborsClassifier
+
 
 # other models
 
@@ -26,6 +28,26 @@ def evaluate_model(clf, X_test, y_test):
 def train_svm_classifier(X_train,y_train, X_test, y_test):
 
     clf = SVC(kernel='rbf', C=1.0, gamma='scale')
+    clf.fit(X_train, y_train)
+
+    return evaluate_model(clf, X_test, y_test)
+
+
+def train_knn_with_pca(X_train, y_train, X_test, y_test):
+
+    pca = PCA(n_components=120)
+    X_train_reduced = pca.fit_transform(X_train)
+    X_test_reduced  = pca.transform(X_test)
+
+    knn = KNeighborsClassifier(n_neighbors=5)
+    knn.fit(X_train_reduced, y_train)
+    
+    return evaluate_model(knn, X_test_reduced, y_test)
+
+def train_large_mlp_classifier(X_train,y_train, X_test, y_test):
+
+    clf = MLPClassifier(hidden_layer_sizes=(512, 256, 128, 64), activation='relu',
+                        solver='adam', max_iter=300, random_state=42)
     clf.fit(X_train, y_train)
 
     return evaluate_model(clf, X_test, y_test)
@@ -392,7 +414,7 @@ def main():
 
     # IF TRAINING TO EXEPRIMENT AGAINST A TEST SET
     model = ImageCNN() 
-    history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=0, lr=1e-2)
     test_correct = 0
     test_total = 0
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -403,15 +425,22 @@ def main():
                 preds = outputs.argmax(dim=1)
                 test_correct += (preds == y_batch).sum().item()
                 test_total += y_batch.size(0)
-            test_acc= test_correct*100 / test_total
+            test_acc= test_correct / test_total
 
 
     print("Testing Accuracy: ", test_acc)
     # When testing against other models just use the test_loader and other data recieved from the above code
     '''
-    acc, f1, prec = train_random_forest_classifier(X_train, y_train, X_test, y_test, test_loader)
+    acc, f1, prec = train_large_mlp_classifier(X_train, y_train, X_test, y_test)
+    print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
+
+    acc, f1, prec = train_svm_classifier(X_train, y_train, X_test, y_test)
+    print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
+
+    acc, f1, prec = train_knn_with_pca(X_train, y_train, X_test, y_test)
     print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
     '''
+    
 
 
 if __name__ == '__main__':
