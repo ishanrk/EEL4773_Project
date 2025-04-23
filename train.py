@@ -377,23 +377,25 @@ def main():
     feats_csv = 'x_train_project.csv'   
     labels_csv = 't_train_project.csv'
 
-    model = ImageCNN()  
-
     # IF TRAINING FOR THE FINAL TEST
     '''
+    model = ImageCNN() 
     history = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
     '''
 
     # IF TRAINING FOR HYPERPARAMETER TUNING
     '''
+    # Set your relevant hyperparaneters in ImageCNN()
+    model = ImageCNN() 
     history = train_hyperameter(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
     '''
 
     # IF TRAINING TO EXEPRIMENT AGAINST A TEST SET
+    model = ImageCNN() 
     history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
     test_correct = 0
     test_total = 0
-    device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     with torch.no_grad():
             for X_batch, y_batch in test_loader:
                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)
@@ -405,7 +407,7 @@ def main():
 
 
     print("Testing Accuracy: ", test_acc)
-    # When testing against other models
+    # When testing against other models just use the test_loader and other data recieved from the above code
     '''
     acc, f1, prec = train_random_forest_classifier(X_train, y_train, X_test, y_test, test_loader)
     print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
