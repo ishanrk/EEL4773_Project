@@ -24,7 +24,7 @@ def evaluate_model(clf, X_test, y_test):
     return acc, recall, precision
 
 def train_svm_classifier(X_train,y_train, X_test, y_test):
-    
+
     clf = SVC(kernel='rbf', C=1.0, gamma='scale')
     clf.fit(X_train, y_train)
 
@@ -264,7 +264,7 @@ def train_experiment(model, x_train_csv, y_train_csv , epochs=25, lr=1e-3, devic
     y_train = np.concatenate(y_train, axis=0)
     X_test = np.concatenate(X_test, axis=0)
     y_test = np.concatenate(y_test, axis=0)
-    return history, X_train, y_train, X_test, y_test
+    return history, X_train, y_train, X_test, y_test, test_loader
 
 def train_hyperparameter(model, x_train_csv, y_train_csv , epochs=25, lr=1e-3, device=None):
     train_loader, validation_loader = load_data_hyperparameters(x_train_csv, y_train_csv,batch_size=64)
@@ -377,13 +377,20 @@ def main():
     feats_csv = 'x_train_project.csv'   
     labels_csv = 't_train_project.csv'
 
-    model = ImageCNN()  # Re-initialize the model each time
+    model = ImageCNN()  
 
+    # IF TRAINING FOR THE FINAL TEST
+    '''
+    history = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    '''
 
-    # Train the model with the current learning rate
-    history ,train_loader, test_loader = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
-    
+    # IF TRAINING FOR HYPERPARAMETER TUNING
+    '''
+    history = train_hyperameter(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    '''
 
+    # IF TRAINING TO EXEPRIMENT AGAINST A TEST SET
+    history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
     test_correct = 0
     test_total = 0
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
@@ -395,19 +402,17 @@ def main():
                 test_correct += (preds == y_batch).sum().item()
                 test_total += y_batch.size(0)
             test_acc= test_correct*100 / test_total
-            print(test_acc, test_correct)
-    acc, f1, prec = train_large_mlp_classifier(train_loader, test_loader)
-    print(f"MLP → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
-    acc, f1, prec = train_svm_classifier(train_loader, test_loader)
-    print(f"SVM → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
-    #acc, f1, prec = train_random_forest_classifier(train_loader, test_loader)
-    #print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
-  
+
+
+    print("Testing Accuracy: ", test_acc)
+    # When testing against other models
+    '''
+    acc, f1, prec = train_random_forest_classifier(X_train, y_train, X_test, y_test, test_loader)
+    print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
+    '''
 
 
 if __name__ == '__main__':
-    print(f"NumPy version: {np.__version__}")
-    print(f"Pandas version: {pd.__version__}")
-    
+
     main()
 
