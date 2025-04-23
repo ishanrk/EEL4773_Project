@@ -8,37 +8,61 @@ from torch.utils.data import TensorDataset, DataLoader, Subset
 from torchvision import transforms
 from sklearn.model_selection import StratifiedShuffleSplit
 
-# Load data function
-def load_data(features_csv, labels_csv, batch_size=64, val_frac=0.2, random_state=42):
-    
+def load_data(features_csv, labels_csv, batch_size=64, test_frac=0.2, val_frac=0.25, random_state=42):
+    # Load and preprocess
     X = pd.read_csv(features_csv, header=None).values.astype(np.float32)
     y = pd.read_csv(labels_csv, header=None).values.squeeze().astype(np.int64)
 
-    # reshape to (N, 100, 100), to make sure the images correctly formated
-    X = X.reshape(-1, 100, 100)
-    # normalize 
-    # IMP: CHECK WHETHER THE IMAGE IS ALREADY NORMALIZED    
-    # X /= 255.0
+    X = X.reshape(-1, 100, 100)  # reshape to (N, 100, 100)
+    X = X / 255.0  # normalize if needed
+    X = X[:, np.newaxis, :, :]  # add channel dim: (N, 1, 100, 100)
 
-    # convert to tensor and add channel dimension: (N, 1, 100, 100)
-    X_tensor = torch.from_numpy(X).unsqueeze(1)
-    y_tensor = torch.from_numpy(y)
+    # Initial split: train+val vs test
+    sss1 = StratifiedShuffleSplit(n_splits=1, test_size=test_frac, random_state=random_state)
+    trainval_idx, test_idx = next(sss1.split(X, y))
+    
+    X_trainval, y_trainval = X[trainval_idx], y[trainval_idx]
+    X_test, y_test = X[test_idx], y[test_idx]
 
-    # create dataset
-    dataset = TensorDataset(X_tensor, y_tensor)
+    # Second split: train vs val from trainval
+    sss2 = StratifiedShuffleSplit(n_splits=1, test_size=val_frac, random_state=random_state)  
+    train_idx, val_idx = next(sss2.split(X_trainval, y_trainval))
 
-    # get quick split to get validation and train set
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=val_frac, random_state=random_state)
-    train_idx, val_idx = next(sss.split(X, y))
+    X_train, y_train = X_trainval[train_idx], y_trainval[train_idx]
+    X_val, y_val = X_trainval[val_idx], y_trainval[val_idx]
 
-    train_ds = Subset(dataset, train_idx)
-    val_ds   = Subset(dataset, val_idx)
+    # Convert to tensors
+    X_train_tensor = torch.from_numpy(X_train)
+    y_train_tensor = torch.from_numpy(y_train)
 
-    # dataLoaders
+    X_val_tensor = torch.from_numpy(X_val)
+    y_val_tensor = torch.from_numpy(y_val)
+
+    X_test_tensor = torch.from_numpy(X_test)
+    y_test_tensor = torch.from_numpy(y_test)
+
+    # Create datasets
+    train_ds = TensorDataset(X_train_tensor, y_train_tensor)
+    val_ds = TensorDataset(X_val_tensor, y_val_tensor)
+    test_ds = TensorDataset(X_test_tensor, y_test_tensor)
+
+    # Create loaders
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False)
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
 
-    return train_loader, val_loader
+    return train_loader, val_loader, test_loader
+
+# IMP: data augmentation, not sure if we need this
+def get_augmented_transforms():
+    return transforms.Compose([
+        transforms.ToPILImage(),             # expects CxHxW or HxW
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(degrees=15),
+        transforms.RandomResizedCrop(size=100, scale=(0.8, 1.0)),
+        transforms.ToTensor(),               # gets 1x100x100 for 1 channel
+    ])
+
 
 # IMP: data augmentation, not sure if we need this
 def get_augmented_transforms():
