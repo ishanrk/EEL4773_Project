@@ -251,7 +251,7 @@ def main():
 
 
     # Train the model with the current learning rate
-    history,train_loader, test_loader = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    history ,train_loader, test_loader = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
     
 
     test_correct = 0
