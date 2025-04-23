@@ -4,10 +4,62 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import TensorDataset, DataLoader, Subset
+from torch.utils.data import TensorDataset, DataLoader
 from torchvision import transforms
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.optim.lr_scheduler import StepLR    # learning rate scheduler
+import matplotlib.pyplot as plt
+from sklearn.svm import SVC
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neural_network import MLPClassifier
+from sklearn.metrics import accuracy_score, f1_score, precision_score
+
+
+def flatten_loader_data(loader):
+    X, y = [], []
+    for data, labels in loader:
+        # Flatten each image to a 1D array
+        X.append(data.view(data.size(0), -1).numpy())
+        y.append(labels.numpy())
+    X = np.concatenate(X, axis=0)
+    y = np.concatenate(y, axis=0)
+    return X, y
+
+def evaluate_model(clf, X_test, y_test):
+    preds = clf.predict(X_test)
+    acc = accuracy_score(y_test, preds)
+    f1 = f1_score(y_test, preds, average='weighted')
+    precision = precision_score(y_test, preds, average='weighted')
+    return acc, f1, precision
+
+def train_svm_classifier(train_loader, test_loader):
+    X_train, y_train = flatten_loader_data(train_loader)
+    X_test, y_test = flatten_loader_data(test_loader)
+
+    clf = SVC(kernel='rbf', C=1.0, gamma='scale')
+    clf.fit(X_train, y_train)
+
+    return evaluate_model(clf, X_test, y_test)
+
+def train_random_forest_classifier(train_loader, test_loader):
+    X_train, y_train = flatten_loader_data(train_loader)
+    X_test, y_test = flatten_loader_data(test_loader)
+
+    clf = RandomForestClassifier(n_estimators=100, random_state=42)
+    clf.fit(X_train, y_train)
+
+    return evaluate_model(clf, X_test, y_test)
+
+def train_large_mlp_classifier(train_loader, test_loader):
+    X_train, y_train = flatten_loader_data(train_loader)
+    X_test, y_test = flatten_loader_data(test_loader)
+
+    clf = MLPClassifier(hidden_layer_sizes=(512, 256, 128), activation='relu',
+                        solver='adam', max_iter=25, random_state=42)
+    clf.fit(X_train, y_train)
+
+    return evaluate_model(clf, X_test, y_test)
+
 
 def get_augmented_transforms():
      return transforms.Compose([
@@ -19,7 +71,7 @@ def get_augmented_transforms():
      ])
 
 # def load_data(features_csv, labels_csv, batch_size=64, test_frac=0.2, val_frac=0.25, random_state=42):
-def load_data(features_csv, labels_csv, batch_size=64, test_frac=0.1, val_frac=0.2, random_state=42):
+def load_data(features_csv, labels_csv, batch_size=64, test_frac=0.2, val_frac=0.1, random_state=42):
     # Load and preprocess
     X = pd.read_csv(features_csv, header=None).values.astype(np.float32)
     y = pd.read_csv(labels_csv, header=None).values.squeeze().astype(np.int64)
@@ -74,14 +126,6 @@ def load_data(features_csv, labels_csv, batch_size=64, test_frac=0.1, val_frac=0
     return train_loader, val_loader, test_loader
  # IMP: data augmentation, not sure if we need this
 
-
-
-
-# Rough CNN Model
-# IMP: This definitely needs to be changed, its just something I randomly
-# put together
-# Question is how do we use hyperparameter training here?
-# IMP: we need glorot and xe initializition here
 class ImageCNN(nn.Module):
     def __init__(self, num_classes=10, 
                  #conv_filters=[32, 64, 128],
@@ -113,7 +157,7 @@ class ImageCNN(nn.Module):
         self.fc1 = nn.Linear(flat_dim, mlp_layers["out_ch"])
         self.bn1 = nn.BatchNorm1d(mlp_layers["out_ch"])
         self.dropout = nn.Dropout(mlp_layers["dropout_rate"])
-        # self.fc2 = nn.Linear(last_dim, num_classes)
+        
         self.fc2 = nn.Linear(256, num_classes)
         self._initialize_weights()
 
@@ -132,12 +176,7 @@ class ImageCNN(nn.Module):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
-            elif isinstance(m, nn.Linear):
-                nn.init.xavier_normal_(m.weight)
-                nn.init.zeros_(m.bias)
-            elif isinstance(m, (nn.BatchNorm2d, nn.BatchNorm1d)):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
+
 
 
 # training loop that tracks valid/train loss for plot, uses adam
@@ -189,17 +228,17 @@ def train(model, x_train_csv, y_train_csv , epochs=25, lr=1e-3, device=None):
 
         # plotting
         history['train_loss'].append(avg_train_loss)
-        history['val_loss'].append(avg_val_loss)
+        #history['val_loss'].append(avg_val_loss)
         history['train_acc'].append(train_acc)
-        history['val_acc'].append(val_acc)
+        #history['val_acc'].append(val_acc)
 
         scheduler.step()  # update learning rate
         print(f"Epoch {epoch}/{epochs} — "
               f"Train Loss: {avg_train_loss:.4f}, Acc: {train_acc:.2f}% | "
-              f"Val Loss: {avg_val_loss:.4f}, Acc: {val_acc:.2f}%"
+              #f"Val Loss: {avg_val_loss:.4f}, Acc: {val_acc:.2f}%"
               f" — LR: {scheduler.get_last_lr()[0]:.6f}")
 
-    return history, test_loader
+    return history, train_loader, test_loader
 
 
 
@@ -208,65 +247,31 @@ def main():
     feats_csv = 'x_train_project.csv'   
     labels_csv = 't_train_project.csv'
 
+    model = ImageCNN()  # Re-initialize the model each time
+
+
+    # Train the model with the current learning rate
+    history,train_loader, test_loader = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
     
 
-    # model = ImageCNN()
-
-    learning_rates = [1e-2]  # List of learning rates to test
-    history_all_lrs = {}  # Dictionary to store results for each learning rate
-
-    # Loop through each learning rate
-    for lr in learning_rates:
-        print(f"Training with learning rate: {lr}")
-        model = ImageCNN()  # Re-initialize the model each time
-
-
-        # Train the model with the current learning rate
-        history, test_loader = train(model, feats_csv, labels_csv, epochs=25, lr=lr)
-
-        # Store the results for this learning rate
-        history_all_lrs[lr] = history
-
-        # Optionally, you can plot the results for each learning rate here:
-        import matplotlib.pyplot as plt
-        epochs_range = range(1, len(history['train_loss']) + 1)
-        
-        plt.figure()
-        plt.plot(epochs_range, history['train_loss'], label=f'Train Loss (LR={lr})')
-        plt.plot(epochs_range, history['val_loss'], label=f'Val Loss (LR={lr})')
-        plt.xlabel('Epoch')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.title(f'Loss over Epochs (LR={lr})')
-        plt.show()
-
-        plt.figure()
-        plt.plot(epochs_range, history['train_acc'], label=f'Train Acc (LR={lr})')
-        plt.plot(epochs_range, history['val_acc'], label=f'Val Acc (LR={lr})')
-        plt.xlabel('Epoch')
-        plt.ylabel('Accuracy (%)')
-        plt.legend()
-        plt.title(f'Accuracy over Epochs (LR={lr})')
-        plt.show()
-        test_correct = 0
-        test_total = 0
-        with torch.no_grad():
+    test_correct = 0
+    test_total = 0
+    with torch.no_grad():
             for X_batch, y_batch in test_loader:
                 
                 outputs = model(X_batch)
                 preds = outputs.argmax(dim=1)
                 test_correct += (preds == y_batch).sum().item()
                 test_total += y_batch.size(0)
-        test_acc= test_correct*100 / test_total
-        print(test_acc, test_correct)
+            test_acc= test_correct*100 / test_total
+            print(test_acc, test_correct)
 
-    # After training all learning rates, you can analyze or compare their performance:
-    for lr, hist in history_all_lrs.items():
-        print(f"Results for learning rate {lr}:")
-        print(f"Final Train Accuracy: {hist['train_acc'][-1]:.2f}%")
-        print(f"Final Validation Accuracy: {hist['val_acc'][-1]:.2f}%")
-    
-    
+    acc, f1, prec = train_svm_classifier(train_loader, test_loader)
+    print(f"SVM → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
+    acc, f1, prec = train_random_forest_classifier(train_loader, test_loader)
+    print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
+    acc, f1, prec = train_large_mlp_classifier(train_loader, test_loader)
+    print(f"MLP → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
 
 
 if __name__ == '__main__':
