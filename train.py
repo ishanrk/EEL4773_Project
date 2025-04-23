@@ -5,81 +5,75 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.utils.data import TensorDataset, DataLoader, Subset
-# from torchvision import transforms
+from torchvision import transforms
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.optim.lr_scheduler import StepLR    # learning rate scheduler
 
+def get_augmented_transforms():
+     return transforms.Compose([
+         transforms.ToPILImage(),             # expects CxHxW or HxW
+         transforms.RandomHorizontalFlip(),
+         transforms.RandomRotation(degrees=15),
+         transforms.RandomResizedCrop(size=100, scale=(0.8, 1.0)),
+         transforms.ToTensor(),               # gets 1x100x100 for 1 channel
+     ])
+
 # def load_data(features_csv, labels_csv, batch_size=64, test_frac=0.2, val_frac=0.25, random_state=42):
-def load_data(features_csv, labels_csv, batch_size=64, val_frac=0.2, random_state=42):
+def load_data(features_csv, labels_csv, batch_size=64, test_frac=0.1, val_frac=0.2, random_state=42):
     # Load and preprocess
     X = pd.read_csv(features_csv, header=None).values.astype(np.float32)
     y = pd.read_csv(labels_csv, header=None).values.squeeze().astype(np.int64)
 
     X = X.reshape(-1, 100, 100)  # reshape to (N, 100, 100)
-    # X = X / 255.0  # normalize if needed
-    # X = X[:, np.newaxis, :, :]  # add channel dim: (N, 1, 100, 100)
+    X = X / 255.0  # normalize if needed
+    X = X[:, np.newaxis, :, :]  # add channel dim: (N, 1, 100, 100)
 
-    # # Initial split: train+val vs test
-    # sss1 = StratifiedShuffleSplit(n_splits=1, test_size=test_frac, random_state=random_state)
-    # trainval_idx, test_idx = next(sss1.split(X, y))
+    # Initial split: train+val vs test
+    sss1 = StratifiedShuffleSplit(n_splits=1, test_size=test_frac, random_state=random_state)
+    trainval_idx, test_idx = next(sss1.split(X, y))
     
-    # X_trainval, y_trainval = X[trainval_idx], y[trainval_idx]
-    # X_test, y_test = X[test_idx], y[test_idx]
+    X_trainval, y_trainval = X[trainval_idx], y[trainval_idx]
+    X_test, y_test = X[test_idx], y[test_idx]
 
-    # # Second split: train vs val from trainval
-    # sss2 = StratifiedShuffleSplit(n_splits=1, test_size=val_frac, random_state=random_state)  
-    # train_idx, val_idx = next(sss2.split(X_trainval, y_trainval))
+    # Second split: train vs val from trainval
+    sss2 = StratifiedShuffleSplit(n_splits=1, test_size=val_frac, random_state=random_state)  
+    train_idx, val_idx = next(sss2.split(X_trainval, y_trainval))
 
-    # X_train, y_train = X_trainval[train_idx], y_trainval[train_idx]
-    # X_val, y_val = X_trainval[val_idx], y_trainval[val_idx]
+    X_train, y_train = X_trainval[train_idx], y_trainval[train_idx]
+    X_val, y_val = X_trainval[val_idx], y_trainval[val_idx]
 
-    # # Convert to tensors
-    # X_train_tensor = torch.from_numpy(X_train)
-    # y_train_tensor = torch.from_numpy(y_train)
+    # Convert to tensors
+    X_train_tensor = torch.from_numpy(X_train)
+    y_train_tensor = torch.from_numpy(y_train)
 
-    # X_val_tensor = torch.from_numpy(X_val)
-    # y_val_tensor = torch.from_numpy(y_val)
-
-    # X_test_tensor = torch.from_numpy(X_test)
-    # y_test_tensor = torch.from_numpy(y_test)
-
-    # # Create datasets
-    # train_ds = TensorDataset(X_train_tensor, y_train_tensor)
-    # val_ds = TensorDataset(X_val_tensor, y_val_tensor)
-    # test_ds = TensorDataset(X_test_tensor, y_test_tensor)
-
-    # # Create loaders
-    # train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    # val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-    # test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
-
-    # return train_loader, val_loader, test_loader
+    augment = get_augmented_transforms()
+    augmented_imgs = torch.stack([augment(img) for img in X_train_tensor])
 
 
-    # convert to tensor and add channel dimension: (N, 1, 100, 100)
-    X_tensor = torch.from_numpy(X).unsqueeze(1)
-    y_tensor = torch.from_numpy(y)
-    # create dataset
-    dataset = TensorDataset(X_tensor, y_tensor)
-    # get quick split to get validation and train set
-    sss = StratifiedShuffleSplit(n_splits=1, test_size=val_frac, random_state=random_state)
-    train_idx, val_idx = next(sss.split(X, y))
+    X_train_tensor = torch.cat([X_train_tensor, augmented_imgs], dim=0)
 
-    train_ds = Subset(dataset, train_idx)
-    val_ds   = Subset(dataset, val_idx)
-    # create loaders
+    y_train_tensor = torch.cat([y_train_tensor, y_train_tensor], dim=0)
+
+
+    X_val_tensor = torch.from_numpy(X_val)
+    y_val_tensor = torch.from_numpy(y_val)
+
+    X_test_tensor = torch.from_numpy(X_test)
+    y_test_tensor = torch.from_numpy(y_test)
+
+    # Create datasets
+    train_ds = TensorDataset(X_train_tensor, y_train_tensor)
+    val_ds = TensorDataset(X_val_tensor, y_val_tensor)
+    test_ds = TensorDataset(X_test_tensor, y_test_tensor)
+
+    # Create loaders
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
-    val_loader   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False)
-    return train_loader, val_loader
-# # IMP: data augmentation, not sure if we need this
-# def get_augmented_transforms():
-#     return transforms.Compose([
-#         transforms.ToPILImage(),             # expects CxHxW or HxW
-#         transforms.RandomHorizontalFlip(),
-#         transforms.RandomRotation(degrees=15),
-#         transforms.RandomResizedCrop(size=100, scale=(0.8, 1.0)),
-#         transforms.ToTensor(),               # gets 1x100x100 for 1 channel
-#     ])
+    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False)
+
+    return train_loader, val_loader, test_loader
+ # IMP: data augmentation, not sure if we need this
+
 
 
 
@@ -116,19 +110,6 @@ class ImageCNN(nn.Module):
             sample = torch.zeros(1,1,100,100)
             feat = self.conv(sample)
         flat_dim = feat.view(1, -1).size(1)
-
-        # linear layers to predict
-        # mlp_layers = []
-        last_dim = flat_dim
-        # for spec in mlp_layers:
-        #     mlp_layers += [
-        #         nn.Linear(last_dim, spec["out_ch"]),
-        #         nn.BatchNorm1d(spec["out_ch"]),
-        #         F.ReLU(inplace=True),
-        #         nn.Dropout(spec["dropout_rate"]),
-        #     ]
-        #     last_dim = spec["out_ch"]
-        # self.mlp = nn.Sequential(*mlp_layers)
         self.fc1 = nn.Linear(flat_dim, mlp_layers["out_ch"])
         self.bn1 = nn.BatchNorm1d(mlp_layers["out_ch"])
         self.dropout = nn.Dropout(mlp_layers["dropout_rate"])
@@ -160,7 +141,8 @@ class ImageCNN(nn.Module):
 
 
 # training loop that tracks valid/train loss for plot, uses adam
-def train_model(model, train_loader, val_loader, epochs=25, lr=1e-3, device=None):
+def train(model, x_train_csv, y_train_csv , epochs=25, lr=1e-3, device=None):
+    train_loader, val_loader, test_loader = load_data(x_train_csv, y_train_csv,batch_size=64)
     device = device or ('cuda' if torch.cuda.is_available() else 'cpu')
     model.to(device)
     criterion = nn.CrossEntropyLoss()
@@ -217,7 +199,7 @@ def train_model(model, train_loader, val_loader, epochs=25, lr=1e-3, device=None
               f"Val Loss: {avg_val_loss:.4f}, Acc: {val_acc:.2f}%"
               f" — LR: {scheduler.get_last_lr()[0]:.6f}")
 
-    return history
+    return history, test_loader
 
 
 
@@ -226,7 +208,7 @@ def main():
     feats_csv = 'x_train_project.csv'   
     labels_csv = 't_train_project.csv'
 
-    train_loader, val_loader = load_data(feats_csv, labels_csv,batch_size=64)
+    
 
     # model = ImageCNN()
 
@@ -240,7 +222,7 @@ def main():
 
 
         # Train the model with the current learning rate
-        history = train_model(model, train_loader, val_loader, epochs=25, lr=lr)
+        history, test_loader = train(model, feats_csv, labels_csv, epochs=25, lr=lr)
 
         # Store the results for this learning rate
         history_all_lrs[lr] = history
@@ -266,12 +248,26 @@ def main():
         plt.legend()
         plt.title(f'Accuracy over Epochs (LR={lr})')
         plt.show()
+        test_correct = 0
+        test_total = 0
+        with torch.no_grad():
+            for X_batch, y_batch in test_loader:
+                
+                outputs = model(X_batch)
+                preds = outputs.argmax(dim=1)
+                test_correct += (preds == y_batch).sum().item()
+                test_total += y_batch.size(0)
+        test_acc= test_correct*100 / test_total
+        print(test_acc, test_correct)
 
     # After training all learning rates, you can analyze or compare their performance:
     for lr, hist in history_all_lrs.items():
         print(f"Results for learning rate {lr}:")
         print(f"Final Train Accuracy: {hist['train_acc'][-1]:.2f}%")
         print(f"Final Validation Accuracy: {hist['val_acc'][-1]:.2f}%")
+    
+    
+
 
 if __name__ == '__main__':
     print(f"NumPy version: {np.__version__}")
