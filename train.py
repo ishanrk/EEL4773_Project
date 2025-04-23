@@ -15,7 +15,8 @@ from sklearn.metrics import accuracy_score, recall_score, precision_score
 from sklearn.decomposition import PCA
 from sklearn.neighbors import KNeighborsClassifier
 from itertools import product
-
+from sklearn.metrics import confusion_matrix, classification_report, accuracy_score, precision_score, recall_score
+from sklearn.metrics import ConfusionMatrixDisplay
 
 # other models
 
@@ -400,9 +401,9 @@ def main():
     # IF TRAINING FOR THE FINAL TEST
     '''
     model = ImageCNN() 
-    history = train(model, x_train, y_train, epochs=25, lr=1e-2)
-    '''
-    '''
+    history = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    
+    
     # IF TRAINING FOR HYPERPARAMETER TUNING
     
     # Set your relevant hyperparaneters in ImageCNN()
@@ -466,30 +467,99 @@ def main():
     out_path = 'hyperparam_results.csv'
     df_sorted.to_csv(out_path, index=False)
     print(f"Saved all results to {out_path}")
+
+    # model = ImageCNN() 
+    # history = train_hyperparameter(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    
     '''
-    
-    
     # IF TRAINING TO EXEPRIMENT AGAINST A TEST SET
-    # use rhe best conv layer
-    model = ImageCNN() 
-    history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=15, lr=1e-2)
-    test_correct = 0
-    test_total = 0
+    conv_layers = [
+                {"out_ch":16, "kernel_size": 7, "dropout_rate": 0.3},
+        {"out_ch":32, "kernel_size": 7, "dropout_rate": 0.3},
+        {"out_ch":64, "kernel_size": 7, "dropout_rate": 0.3},
+        {"out_ch":128, "kernel_size": 7, "dropout_rate": 0.3}
+                
+            ]
+    model = ImageCNN(conv_layers=conv_layers, mlp_layers={"out_ch":256, "dropout_rate":0.5}) 
+    history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    model.eval()
+    X_all = []
+    y_all = []
+
+    for X_batch, y_batch in test_loader:
+        X_all.append(X_batch)
+        y_all.append(y_batch)
+
+    X_all = torch.cat(X_all)
+    y_all = torch.cat(y_all)
+
+    # Step 2: Move to device
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    X_all = X_all.to(device)
+    y_all = y_all.to(device)
+
+    # Step 3: Forward pass in one go
     model.eval()
     with torch.no_grad():
-            for X_batch, y_batch in test_loader:
-                X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-                outputs = model(X_batch)
-                preds = outputs.argmax(dim=1)
-                test_correct += (preds == y_batch).sum().item()
-                test_total += y_batch.size(0)
-            test_acc= test_correct / test_total
+        outputs = model(X_all)
+        preds = outputs.argmax(dim=1)
 
+    # Step 4: Move predictions and labels to CPU for evaluation
+    y_true = y_all.cpu().numpy()
+    y_pred = preds.cpu().numpy()
 
-    print("Testing Accuracy: ", test_acc)
-    
-    # When testing against other models just use the test_loader and other data recieved from the above code
+    # Step 5: Metrics
+    cm = confusion_matrix(y_true, y_pred)
+
+    # Optional: class names (if you have them)
+    # Example: class_names = ['cat', 'dog', 'frog']
+    num_classes = cm.shape[0]
+    class_names = [str(i) for i in range(num_classes)]
+
+    # Create the display
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+
+    # Customize and plot
+    fig, ax = plt.subplots(figsize=(8, 6))
+    disp.plot(include_values=True, cmap='Blues', ax=ax, xticks_rotation='horizontal')
+    plt.title("Confusion Matrix")
+    plt.tight_layout()
+    plt.show()
+
+    accuracy = accuracy_score(y_true, y_pred)
+    precision = precision_score(y_true, y_pred, average='macro')
+    recall = recall_score(y_true, y_pred, average='macro')
+
+    print(f"Accuracy:  {accuracy:.4f}")
+    print(f"Precision: {precision:.4f}")
+    print(f"Recall:    {recall:.4f}")
+    train_loss = history['train_loss']
+    train_acc  = history['train_acc']
+    epochs = range(1, len(train_loss) + 1)
+
+    # Plot
+    plt.figure(figsize=(10, 4))
+
+    # Training Loss
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, train_loss, label='Train Loss', color='tab:red')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Training Loss')
+    plt.grid(True)
+
+    # Training Accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, train_acc, label='Train Accuracy', color='tab:blue')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title('Training Accuracy')
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+        # When testing against other models just use the test_loader and other data recieved from the above code
     '''
     acc, f1, prec = train_large_mlp_classifier(X_train, y_train, X_test, y_test)
     print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
@@ -501,9 +571,9 @@ def main():
     print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
     '''
     
+    
 
 
 if __name__ == '__main__':
 
     main()
-
