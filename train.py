@@ -400,9 +400,9 @@ def main():
     # IF TRAINING FOR THE FINAL TEST
     '''
     model = ImageCNN() 
-    history = train(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
+    history = train(model, x_train, y_train, epochs=25, lr=1e-2)
     '''
-    
+    '''
     # IF TRAINING FOR HYPERPARAMETER TUNING
     
     # Set your relevant hyperparaneters in ImageCNN()
@@ -466,18 +466,17 @@ def main():
     out_path = 'hyperparam_results.csv'
     df_sorted.to_csv(out_path, index=False)
     print(f"Saved all results to {out_path}")
-
-    # model = ImageCNN() 
-    # history = train_hyperparameter(model, feats_csv, labels_csv, epochs=25, lr=1e-2)
-    
     '''
-    # IF TRAINING TO EXEPRIMENT AGAINST A TEST SET
     
+    
+    # IF TRAINING TO EXEPRIMENT AGAINST A TEST SET
+    # use rhe best conv layer
     model = ImageCNN() 
     history,X_train,y_train,X_test,y_test,test_loader = train_experiment(model, feats_csv, labels_csv, epochs=15, lr=1e-2)
     test_correct = 0
     test_total = 0
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model.eval()
     with torch.no_grad():
             for X_batch, y_batch in test_loader:
                 X_batch, y_batch = X_batch.to(device), y_batch.to(device)
@@ -491,7 +490,7 @@ def main():
     print("Testing Accuracy: ", test_acc)
     
     # When testing against other models just use the test_loader and other data recieved from the above code
-    
+    '''
     acc, f1, prec = train_large_mlp_classifier(X_train, y_train, X_test, y_test)
     print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
 

@@ -26,6 +26,8 @@ def test(x_test_csv, y_test_csv):
 
     model.load_state_dict(torch.load('model_weights.pth'))
 
+    model.eval()
+
     preds = model(X_tensor.to(device=device))
 
     preds =  preds.argmax(dim=1)
