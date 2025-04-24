@@ -27,9 +27,9 @@ def evaluate_model(clf, X_test, y_test):
     precision = precision_score(y_test, preds, average='weighted')
     return acc, recall, precision
 
-def train_svm_classifier(X_train,y_train, X_test, y_test):
+def train_svm_classifier(X_train,y_train, X_test, y_test, pca_components=100):
 
-    pca = PCA(n_components=500)
+    pca = PCA(n_components=pca_components)
     X_train_reduced = pca.fit_transform(X_train)
     X_test_reduced  = pca.transform(X_test)
 
@@ -39,9 +39,9 @@ def train_svm_classifier(X_train,y_train, X_test, y_test):
 
     return evaluate_model(clf, X_test_reduced, y_test)
 
-def train_knn_with_pca(X_train, y_train, X_test, y_test):
+def train_knn_with_pca(X_train, y_train, X_test, y_test, pca_components=100):
 
-    pca = PCA(n_components=500)
+    pca = PCA(n_components=pca_components)
     X_train_reduced = pca.fit_transform(X_train)
     X_test_reduced  = pca.transform(X_test)
 
@@ -50,9 +50,9 @@ def train_knn_with_pca(X_train, y_train, X_test, y_test):
     
     return evaluate_model(knn, X_test_reduced, y_test)
 
-def train_large_mlp_classifier(X_train,y_train, X_test, y_test):
+def train_large_mlp_classifier(X_train,y_train, X_test, y_test, hidden_layers=(1024,512, 256, 128, 64)):
 
-    clf = MLPClassifier(hidden_layer_sizes=(1024,512, 256, 128, 64), activation='relu',
+    clf = MLPClassifier(hidden_layer_sizes=hidden_layers, activation='relu',
                         solver='adam', max_iter=300, random_state=42)
     clf.fit(X_train, y_train)
 
@@ -519,12 +519,13 @@ def main():
     # Create the display
     disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
 
-    # Customize and plot
+       # Customize and plot
     fig, ax = plt.subplots(figsize=(8, 6))
     disp.plot(include_values=True, cmap='Blues', ax=ax, xticks_rotation='horizontal')
     plt.title("Confusion Matrix")
     plt.tight_layout()
-    plt.show()
+    # plt.show()
+    plt.savefig('ConfusionMatrix.eps', format='eps')
 
     accuracy = accuracy_score(y_true, y_pred)
     precision = precision_score(y_true, y_pred, average='macro')
@@ -538,26 +539,30 @@ def main():
     epochs = range(1, len(train_loss) + 1)
 
     # Plot
-    plt.figure(figsize=(10, 4))
-
+    # plt.figure(figsize=(10, 4))
+    plt.figure()
     # Training Loss
-    plt.subplot(1, 2, 1)
+    # plt.subplot(1, 2, 1)
     plt.plot(epochs, train_loss, label='Train Loss', color='tab:red')
+    plt.plot(epochs, [x / 100 for x in train_acc], label='Train Accuracy', color='tab:blue')
     plt.xlabel('Epoch')
-    plt.ylabel('Loss')
+    plt.ylabel('Loss and Accuracy')
     plt.title('Training Loss')
+    plt.legend()
     plt.grid(True)
+    plt.savefig('TrainingLossAcc.eps', format='eps')
 
-    # Training Accuracy
-    plt.subplot(1, 2, 2)
-    plt.plot(epochs, train_acc, label='Train Accuracy', color='tab:blue')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.title('Training Accuracy')
-    plt.grid(True)
 
-    plt.tight_layout()
-    plt.show()
+    # # Training Accuracy
+    # plt.subplot(1, 2, 2)
+    # plt.plot(epochs, train_acc, label='Train Accuracy', color='tab:blue')
+    # plt.xlabel('Epoch')
+    # plt.ylabel('Accuracy')
+    # plt.title('Training Accuracy')
+    # plt.grid(True)
+
+    # plt.tight_layout()
+    # plt.show()
 
         # When testing against other models just use the test_loader and other data recieved from the above code
     '''
@@ -570,6 +575,32 @@ def main():
     acc, f1, prec = train_knn_with_pca(X_train, y_train, X_test, y_test)
     print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}")
     '''
+
+    hidden_layers_list = [
+    (1024, 512, 256, 128, 64),
+    (512, 256, 128, 64),
+    (256, 128, 64),
+    (1024, 1024, 512, 256, 128, 64),
+    (512, 512, 256, 128, 64),
+    (256, 256, 128, 64),
+    (128, 128, 64),
+    (2048, 1024, 512, 256, 128, 64),
+    (2048, 2048, 1024, 512, 256, 128, 64),
+    ]
+    for hidden_layers in hidden_layers_list:
+        acc, f1, prec = train_large_mlp_classifier(X_train, y_train, X_test, y_test, hidden_layers=hidden_layers)
+        print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}, Hidden Layers: {hidden_layers}")
+
+    # train those first 
+    
+    pca_components = [5, 10, 20, 30, 40, 50]
+    for n_component in pca_components:
+        acc, f1, prec = train_svm_classifier(X_train, y_train, X_test, y_test, pca_components=n_component)
+        print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}, PCA: {n_component}")
+
+        acc, f1, prec = train_knn_with_pca(X_train, y_train, X_test, y_test, pca_components=n_component)
+        print(f"RF → Accuracy: {acc:.2f}, F1: {f1:.2f}, Precision: {prec:.2f}, PCA: {n_component}")
+    
     
     
 
